@@ -1,44 +1,35 @@
 def nara_catalog_uri(id)
-  "http://catalog.archives.gov/id/#{id.node}"
+  "http://catalog.archives.gov/id/#{id}"
 end
 
-# Return a string for sourceResource.relation
+##
+# The parent hierarchy for NARA's archival description allows:
+# `parentRecordGroup` OR `parentSeries.parentRecordGroup` OR
+# `parentFileUnit.parentRecordGroup` OR
+# `parentFileUnit.parentSeries.parentRecordGroup'
 #
-# <parentFileUnit>
-#  <title>VALUE1</title>
-#  <parentSeries>
-#    <title>VALUE2</title>
-#    <parentRecordGroup>
-#      <title>VALUE3</title>
-#    </parentRecordGroup>
-#  </parentSeries>
-#  </parentFileUnit>
-#  [should be combed as VALUE3""; ""VALUE2""; ""VALUE1]
+# All of these combinations are allowable with `parentCollection` as well.
 #
-#  OR
+# The resulting titles should be concatinated in reverse order; i.e. 
+# the JSON nests the hierarchy in reverse order.
 #
-#  <parentFileUnit>
-#  <title>VALUE1</title>
-#  <parentSeries>
-#    <title>VALUE2</title>
-#    <parentCollection>
-#      <title>VALUE3</title>
-#    </parentCollection>
-#  </parentSeries>
-#  </parentFileUnit>
-#  [should be combed as VALUE3""; ""VALUE2""; ""VALUE1]"
-#
-# @param parent_file_unit [Krikri::JsonParser::Value]
-# @return [String]
-#
-# @todo: why are we semicolon delimiting these, won't we just split them later?
-def make_relation(parent_file_unit)
-  title = parent_file_unit['title']
-  ps = parent_file_unit['parentSeries']
-  parent_srs_title = ps.field('title')
-  group_coll_title = ps.field('parentRecordGroup | parentCollection', 'title')
-  "#{group_coll_title.first.value}; #{parent_srs_title.first.value}; " \
-  "#{title.first.value}"
+# @yieldparam parent [Krikri::JsonParser::Value]
+# @yieldreturn [String]
+make_relation = lambda do |parent|
+  top_titles = parent['title']
+
+  mid_group  = parent['parentSeries']
+  mid_titles = mid_group.field('title')
+
+  bot_titles = mid_group.field('parentRecordGroup | parentCollection', 'title')
+
+  bot_titles = parent['parentRecordGroup'].field('title') if 
+    bot_titles.empty?    
+  bot_titles = parent['parentCollection'].field('title') if
+    bot_titles.empty?
+  
+  [bot_titles.values.first, mid_titles.values.first, top_titles.values.first]
+    .compact.join('; ')
 end
 
 # <useRestriction>
@@ -57,124 +48,36 @@ end
 #
 # @param element [Krikri::JsonParser::Value]
 # @return [String]
-def make_rights(use_restriction)
-  node = use_restriction.node
-  note = node.fetch('note', nil)
-  sura = node.fetch('specificUseRestrictionArray', nil)
-  status = node.fetch('status', nil)
-  l_and_r_parts = \
-    [specific_rights_part(sura), genl_rights_part(note, status)].compact
-  l_and_r_parts.join ': '
+make_rights = lambda do |use_restriction|
+  note   = use_restriction['note'].values.first
+  sura   = use_restriction['specificUseRestrictionArray'].field('termName')
+  status = use_restriction['status'].field('termName').values
+
+  use_restrictions = sura.empty? ? nil : sura.values.join(', ')
+  general_rights   = [note, status].flatten.compact.join(' ')
+
+  [use_restrictions, general_rights].compact.join ': '
 end
 
-# @see #make_rights
-def specific_rights_part(specific_use_restriction_array)
-  return nil if specific_use_restriction_array.nil?
-  sur = specific_use_restriction_array['specificUseRestriction']
-  sur = [sur] unless sur.is_a? Array
-  terms = sur.map { |el| el['termName'] }
-  terms.join ', '
-end
-
-# @see #make_rights
-def genl_rights_part(note, status)
-  [note, status['termName']].compact.join ' '
-end
-
-# @see #make_begin_date
-# @see #make_end_date
+##
+# Reconstruct a formatted date string from a date node.
+# 
+# The date node containing `year`, `month` and/or `day`; Date qualifiers are
+# sometimes added from a qualifier field
 #
 # @param node [Hash]
 # @return [String]
-#
-# @todo: refactor to accept a ValueArray and handle the empty case
-def date_string(node)
-  return "" if node.nil?
-  ymd = [
-    node.fetch('year', nil), node.fetch('month', nil), node.fetch('day', nil)
-  ].compact.map { |e| "%02d" % e }.join '-'
-  qualifier_node = node.fetch('dateQualifier', false)
+format_date = lambda do |date|
+  date_str = [date['year'].values.first, 
+              date['month'].values.first, 
+              date['day'].values.first]
+             .compact.map { |e| "%02d" % e }.join '-'
+  return if date_str.empty?
+  qualifier = date['dateQualifier'].field('termName').values.first
 
-  return ymd unless qualifier_node
-
-  qualifier = qualifier_node['termName']
-  (qualifier == '?') ? "#{ymd}#{qualifier}" : "#{qualifier} #{ymd}"
+  return date_str if qualifier.nil?
+  (qualifier == '?') ? "#{date_str}#{qualifier}" : "#{qualifier} #{date_str}"
 end
-
-# Date and temporal fields
-#
-# FIXME:
-#
-# This may be wrong.  The original comment in this file was:
-#
-# <quote>
-#   *Check for coverage dates first and if they are missing, then check for
-#   other dates. These are ORs, not ANDs. Do not display all.
-#   **NOT <hierarchy-item-inclusive-dates>
-# </quote>
-#
-# ... But it looks to me like coverageDates is supposed to represent
-# "aboutness" as dcterms:temporal, and the other ones are supposed to represent
-# a publication, production, or copyright date as dc:date.
-#
-# This needs verification.
-#
-# <coverageDates>
-#   <coverageEndDate>
-#     <dateQualifier>[VALUE]</dateQualifier>
-#     <day>[VALUE]</day>
-#     <month>[VALUE]</month>
-#     <year>[VALUE]</year>
-#   </coverageEndDate>
-#   <coverageStartDate>
-#     <dateQualifier>[VALUE]</dateQualifier>
-#     <day>[VALUE]</day>
-#     <month>[VALUE]</month>
-#     <year>[VALUE]</year>
-#   </coverageStartDate>
-# </coverageDates>
-#
-# <copyrightDateArray>
-#   <proposableQualifiableDate>
-#     <dateQualifier>[VALUE]</dateQualifier>
-#     <day>[VALUE]</day>
-#     <month>[VALUE]</month>
-#     <year>[VALUE]</year>
-#   </proposableQualifiableDate>
-# </copyrightDateArray>
-#
-# <productionDateArray>
-#   <proposableQualifiableDate>
-#     <dateQualifier>[VALUE]</dateQualifier>
-#     <day>[VALUE]</day>
-#     <month>[VALUE]</month>
-#     <year>[VALUE]</year>
-#   </proposableQualifiableDate>
-# </productionDateArray>
-#
-# <broadcastDateArray>
-#   <proposableQualifiableDate>
-#     <dateQualifier/>[VALUE]</dateQualifier>
-#     <day>[VALUE]</day>
-#     <month>[VALUE]</month>
-#     <year>[VALUE]</year>
-#     <logicalDate>[VALUE]</logicalDate>
-#   </proposableQualifiableDate>
-# </broadcastDateArray>
-#
-# <releaseDateArray>
-#   <proposableQualifiableDate>
-#     <dateQualifier>[VALUE]</dateQualifier>
-#     <day>[VALUE]</day>
-#     <month>[VALUE]</month>
-#     <year>[VALUE]</year>
-#     <logicalDate>[VALUE]</logicalDate>
-#   </proposableQualifiableDate>
-# </releaseDateArray>
-#
-# A record can have both dc:date and dcterms:temporal values, like
-# coverageDates and broadcastDateArray in
-# https://catalog.archives.gov/api/v1?pretty=true&resultTypes=item%2CfileUnit&objects.object.@objectSortNum=1&naIds=5860128
 
 Krikri::Mapper.define(:nara_json, :parser => Krikri::JsonParser) do
   provider :class => DPLA::MAP::Agent do
@@ -195,7 +98,7 @@ Krikri::Mapper.define(:nara_json, :parser => Krikri::JsonParser) do
   end
 
   isShownAt :class => DPLA::MAP::WebResource do
-    uri record.field('naId').first_value.map { |id| nara_catalog_uri(id) }
+    uri record.field('naId').first_value.map { |id| nara_catalog_uri(id.value) }
   end
 
   object :class => DPLA::MAP::WebResource,
@@ -219,25 +122,20 @@ Krikri::Mapper.define(:nara_json, :parser => Krikri::JsonParser) do
   end
 
   sourceResource :class => DPLA::MAP::SourceResource do
-    # <parentRecordGroup> OR <parentCollection>
-    #   <naId>[VALUE]</naId>
-    #   <title>[VALUE]</title>
-    #   <recordGroupNumber>[VALUE]</recordGroupNumber>
-    # </parentRecordGroup> OR </parentCollection>
-    #
-    # @todo: some of the NARA records have what look like collections
-    #   nested under a `parentFileUnit`. do we need to catch these?
     collection :class => DPLA::MAP::Collection,
-               :each => record.field('description', 'item | itemAv | fileUnit',
-                                     'parentSeries',
-                                     'parentRecordGroup | parentCollection', 'title'),
+               # @note: the [] in `fields` matches the empty path (i.e. it calls 
+               #   `#field` with no arguments)
+               :each => record.field('description', 'item | itemAv | fileUnit')
+                       .fields(['parentFileUnit', 'parentSeries'], 'parentSeries', [])
+                       .field('parentRecordGroup | parentCollection', 'title'),
                :as => :collection_title do
       title collection_title
     end
 
+    ##
     # @todo: mapping spreadsheet says to use 'Most Recent' if multiple 
     #   <contributor-display> values are present. It's not clear what this 
-    #   means in the JSON context.
+    #   means.
     contributor :class => DPLA::MAP::Agent,
                 :each => record.field('description', 'item | itemAv | fileUnit',
                                       'organizationalContributorArray | ' \
@@ -250,19 +148,13 @@ Krikri::Mapper.define(:nara_json, :parser => Krikri::JsonParser) do
                 :as => :contributor do
       providedLabel contributor.field('termName')
     end
-
-    # *Use <contributorType>Most Recent</contributorType> if multiple <contributor-display> values.
+    
+    ##
+    # *Use <contributorType>Most Recent</contributorType> if multiple
+    # <contributor-display> values.
     #
-    # FIXME:  the instruction on the line above doesn't make sense with the
-    #         structure of this element in the original data. Verify?
-    #
-    # <creatingOrganizationArray> OR <creatingIndividualArray>
-    #   <creatingOrganization> OR <creatingIndividual>
-    #     <creator>
-    #       <termName>[VALUE]</termName>
-    #     </creator>
-    #   </creatingOrganization> OR </creatingIndividual>
-    # </creatingOrganizationArray> OR </creatingIndividualArray>
+    # @todo: the instruction on the line above doesn't make sense with the
+    #   structure of this element in the original data. Verify?
     creator :class => DPLA::MAP::Agent,
             :each => record.field('description', 'item | itemAv | fileUnit',
                                   'parentSeries',
@@ -274,45 +166,26 @@ Krikri::Mapper.define(:nara_json, :parser => Krikri::JsonParser) do
       providedLabel creator_name
     end
 
-    # @todo: `coverageDates` should be included here, but they often return 
-    #   without *any* values (`nil` begin & end dates), making them hard to 
-    #   skip over
-    #
-    # @todo: add mapping for begin/end on coverageDates.
     date :class => DPLA::MAP::TimeSpan,
-         :each => record.field('description', 'item | itemAv | fileUnit',
-                               'copyrightDateArray |' \
-                               'productionDateArray | broadcastDateArray |' \
-                               'releaseDateArray', 'proposableQualifiableDate'),
+         :each => record.field('description', 'item | itemAv | fileUnit')
+                 .if.field('coverageDates')
+                 .else { |vs| vs.field('copyrightDateArray | productionDateArray |'\
+                                       'broadcastDateArray | releaseDateArray', 
+                                       'proposableQualifiableDate') },
          :as => :dates do
-      providedLabel dates.map { |d| date_string(d.node) }
-      # self.begin dates.field('coverageStartDate').map { |d| date_string(d.node) }
-      # self.end dates.field('coverageEndDate').map { |d| date_string(d.node) }
+      # use `&format_date` to process date nodes into strings
+      # `providedLabel` will be "" for `coverageDates` nodes with Begin/End
+      providedLabel dates.map(&format_date)
+      self.begin dates.field('coverageStartDate').map(&format_date)
+      self.end dates.field('coverageEndDate').map(&format_date)
     end
 
-    # This has no mapping, according to the 4.0 spreadsheet, `coverageDates`
-    # should be be in dc:date
-    # temporal :class => DPLA::MAP::TimeSpan,
-    #          :each => record.field('description', 'item | itemAv | fileUnit',
-    #                                'coverageDates'),
-    #          :as => :dates do
-    #   # providedLabel dates.map { |d| make_date_provided_label(d) }
-    #   self.begin dates.map { |d| make_begin_date(d) }
-    #   self.end dates.map { |d| make_end_date(d) }
-    # end
+    description record.field('description', 'item | itemAv | fileUnit')
+                 .fields('scopeAndContentNote',
+                         ['generalNoteArray', 'generalNote', 'note'])
 
-    description record.field('description', 'item | itemAv | fileUnit',
-                             'scopeAndContentNote | generalNoteArray',
-                             'generalNote', 'note')
-
-    # <extent>[VALUE]</extent>
     extent record.field('description', 'item | itemAv | fileUnit', 'extent')
 
-    # <specificRecordsTypeArray>
-    #  <specificRecordsType>
-    #  <termName>[VALUE]</termName>
-    # </specificRecordsType>
-    # <specificRecordsTypeArray>"
     dcformat record.field('description', 'item | itemAv | fileUnit',
                           'specificRecordsTypeArray', 'specificRecordsType',
                           'termName')
@@ -320,33 +193,23 @@ Krikri::Mapper.define(:nara_json, :parser => Krikri::JsonParser) do
     identifier record.field('description', 'item | itemAv | fileUnit',
                             'variantControlNumberArray',
                             'variantControlNumber')
-                .map { |vcn| result = [vcn['type'].field('termName').values.first,
-                                       vcn['number'].values.first].compact.join(': ') }
+                .map { |vcn| [vcn['type'].field('termName').values.first,
+                              vcn['number'].values.first].compact.join(': ') }
 
-    # <languageArray>
-    # <language>
-    # <termName>[VALUE]</termName>
-    # </language>
-    # </languageArray>
     language :class => DPLA::MAP::Controlled::Language,
              :each => record.field('description', 'item | itemAv | fileUnit',
-                                   'languageArray', 'language', 'termName'),
+                                   'languageArray', 'language'),
              :as => :lang do
-      providedLabel lang
+      providedLabel lang.field('termName')
     end
 
-    # <geographicReferenceArray>
-    #  <geographicPlaceName>
-    #  <termName>[VALUE]</termName>
-    #  </geographicPlaceName>
-    # </geohgraphicReferenceArray>
     spatial :class => DPLA::MAP::Place, 
             :each => record.field('description', 'item | itemAv | fileUnit',
                                   'geographicReferenceArray',
-                                  'geographicPlaceName', 'termName'),
+                                  'geographicPlaceName'),
             :as => :place do
     
-      providedLabel place
+      providedLabel place.field('termName')
     end
 
     publisher :class => DPLA::MAP::Agent,
@@ -362,35 +225,26 @@ Krikri::Mapper.define(:nara_json, :parser => Krikri::JsonParser) do
       providedLabel agent.field('termName')
     end
 
-    relation record.field('description', 'item | itemAv | fileUnit',
-                          'parentFileUnit')
-                   .map { |parent| make_relation(parent) }
+    relation record.field('description', 'item | itemAv | fileUnit')
+              .fields('parentFileUnit', 
+                      'parentSeries', 
+                      'parentRecordGroup', 
+                      'parentCollection')
+              .map(&make_relation)
+                   
 
-    rights record.field('description', 'item | itemAv | fileUnit',
-                        'useRestriction')
-                 .map { |el| make_rights(el) }
+    rights record.field('description', 'item | itemAv | fileUnit', 
+                        'useRestriction').map(&make_rights)
 
-    # <topicalSubjectArray>
-    # <topicalSubject>
-    # <termName>[VALUE]</termName>
-    # </topicalSubject>
-    # </topicalSubjectArray>
     subject :class => DPLA::MAP::Concept,
             :each => record.field('description', 'item | itemAv | fileUnit',
-                                  'topicalSubjectArray', 'topicalSubject',
-                                  'termName'),
+                                  'topicalSubjectArray', 'topicalSubject'),
             :as => :concept do
-      providedLabel concept
+      providedLabel concept.field('termName')
     end
 
     title record.field('description', 'item | itemAv | fileUnit', 'title')
 
-    # <generalRecordsTypeArray>
-    #  <generalRecordsType>
-    #  <termName>[VALUE]</termName>
-    #  </generalRecordsType>
-    #  </generalRecordsTypeArray>
-    #
     # # to enrich:
     # Architectural and Engineering Drawings (image)
     # Artifacts (physical object)
