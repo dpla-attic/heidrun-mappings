@@ -27,8 +27,9 @@ extract_creator = lambda do |r|
 
   creator = all_names.find { |name| name[:role] == 'creator' }
   creator ||= all_names.first
-
-  creator[:label]
+  # It is possible for creator to be nil if there is no <name> section
+  # and in this case return empty string.
+  creator.nil? ? '' : creator[:label]
 end
 
 extract_contributors = lambda do |r|
