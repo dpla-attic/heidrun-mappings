@@ -205,6 +205,9 @@ Krikri::Mapper.define(:digcomm_mods, :parser => Krikri::ModsParser) do
     # FIXME: non-DCMIType values from type will be handled in enrichment
     dcformat record.field('mods:genre')
 
+    # <mods:genre...>
+    genre record.field('mods:genre')
+
     identifier record.map(&build_identifier).flatten
 
     # FIXME: Language code enrichment needed here (language_to_lexvo.rb)
