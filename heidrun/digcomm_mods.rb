@@ -1,3 +1,29 @@
+# Extract date values and construct a range that can be parsed by the
+# TimeSpan enrichment
+extract_date = lambda do |r|
+  date_begin = nil
+  date_end = nil
+  date_label = ''
+
+  dates = r['mods:originInfo'].fields(['mods:dateCreated'],
+                    ['mods:dateIssued'],
+                    ['mods:dateOther'],
+                    ['mods:copyrightDate'])
+                 .match_attribute(:encoding, 'w3cdtf')
+
+  date_begin = dates.values.sort.first if !dates.values.nil?
+  date_end = dates.values.sort.last if !dates.values.nil?
+
+  if !date_end.nil? && !date_begin.nil? && date_begin != date_end
+    date_label = date_begin+'-'+date_end
+  elsif !date_begin.nil?
+    date_label=date_begin
+  end
+  date_label
+end
+
+
+
 # Combine all sub-fields in the <name> section EXCEPT <affiliation>,
 # <displayForm>, <description>, and <role>. If there is no <name> with a
 # <roleTerm>creator</roleTerm>, then the first name is the creator no matter
@@ -183,16 +209,12 @@ Krikri::Mapper.define(:digcomm_mods, :parser => Krikri::ModsParser) do
     # <mods:originInfo><mods:dateOther encoding="w3cdtf" keyDate="yes">
     # <mods:originInfo><mods:copyrightDate encoding="w3cdtf" keyDate="yes">
     date :class => DPLA::MAP::TimeSpan,
-         :each => record.fields(['mods:originInfo', 'mods:dateCreated'],
-                                ['mods:originInfo', 'mods:dateIssued'],
-                                ['mods:originInfo', 'mods:dateOther'],
-                                ['mods:originInfo', 'mods:copyrightDate'])
-                 .match_attribute(:encoding, 'w3cdtf')
-                 .match_attribute(:keyDate, 'yes'),
+         :each => record.map(&extract_date).flatten,
          :as => :created do
-      providedLabel created
-      self.begin created.match_attribute(:point, 'start')
-      self.end created.match_attribute(:point, 'end')
+        providedLabel created
+
+        # self.begin created.match_attribute(:point, 'start')
+        # self.end created.match_attribute(:point, 'end')
     end
 
     # <mods:abstract>; <mods:note...>
