@@ -7,12 +7,8 @@
 #
 #  e.g.
 #   https://thumbnails.calisphere.org/clip/1536:1024/39e015bc8fd770a69775811891784282
-cdl_preview = lambda do |r|
-  base_url = 'https://thumbnails.calisphere.org/clip/'
-  md5_hash = r['reference_image_md5'].first ? r['reference_image_md5'].first.value : nil
-  image_url = nil
-
-  image_url = base_url + '150x150/' + md5_hash unless md5_hash.nil?
+def cdl_preview(md5)
+  image_url = md5 && ("https://thumbnails.calisphere.org/clip/150x150/#{md5}")
   image_url
 end
 
@@ -126,6 +122,8 @@ Krikri::Mapper.define(:cdl, parser: Krikri::JsonParser) do
   end
 
   preview class: DPLA::MAP::WebResource do
-    uri record.map(&cdl_preview).flatten
+    uri record.field('reference_image_md5').first_value.map { |md5|
+      cdl_preview(md5.value)
+    }
   end
 end
