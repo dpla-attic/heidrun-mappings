@@ -33,9 +33,11 @@ Krikri::Mapper.define(:esdn_mods, :parser => Krikri::ModsParser) do
     # the metadata required for collections. This just grabs the set's
     # identifier from the OAI-PMH setSpec in the record header.
     collection :class => DPLA::MAP::Collection,
-               :each => header.field('xmlns:setSpec'),
+               :each => record.field('mods:relatedItem')
+                              .match_attribute(:type, 'host')
+                              .match_attribute(:displayLabel, 'Collection'),
                :as => :coll do
-      title coll
+      title coll.field('mods:titleInfo', 'mods:title')
     end
 
     contributor :class => DPLA::MAP::Agent,
