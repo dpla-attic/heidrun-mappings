@@ -420,7 +420,7 @@ Krikri::Mapper.define(:hathi_marcxml,
     language class: DPLA::MAP::Controlled::Language,
              each: record.map(&language_map).flatten,
              as: :lang do
-      prefLabel lang
+      providedLabel lang
     end
 
     # dcterms:spatial

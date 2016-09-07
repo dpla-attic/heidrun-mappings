@@ -79,7 +79,7 @@ Krikri::Mapper.define(:cdl, parser: Krikri::JsonParser) do
     language  class: DPLA::MAP::Controlled::Language,
               each: record.field('language_ss'),
               as: :lang do
-      prefLabel lang
+      providedLabel lang
     end
 
     spatial class: DPLA::MAP::Place,

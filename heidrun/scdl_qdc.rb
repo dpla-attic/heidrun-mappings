@@ -49,7 +49,7 @@ Krikri::Mapper.define(:scdl_qdc,
     genre record.field('dcterms:medium')
 
     language :class => DPLA::MAP::Controlled::Language, :each => record.field('dc:language'), :as => :lang do
-      prefLabel lang
+      providedLabel lang
     end
 
     spatial :class => DPLA::MAP::Place, :each => record.field('dcterms:spatial'), :as => :place do
