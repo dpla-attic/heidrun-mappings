@@ -168,7 +168,10 @@ Krikri::Mapper.define(:ia, parser: Krikri::XmlParser) do
 
     # dcterms:language
     #   META.XML <language>
-    language record.field('language')
+    language class: DPLA::MAP::Controlled::Language,
+              each: record.field('language'),
+              as: :lang do
+      providedLabel lang
 
     # dcterms:spatial
     #   MARC.xml

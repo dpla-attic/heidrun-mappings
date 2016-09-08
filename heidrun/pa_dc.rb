@@ -59,7 +59,7 @@ Krikri::Mapper.define(:pa_dc, :parser => Krikri::OaiDcParser) do
     genre record.field('dc:type')
 
     language :class => DPLA::MAP::Controlled::Language, :each => record.field('dc:language'), :as => :lang do
-      prefLabel lang
+      providedLabel lang
     end
 
     spatial :class => DPLA::MAP::Place, :each => record.field('dc:coverage'), :as => :place do

@@ -81,7 +81,7 @@ Krikri::Mapper.define(:mwdl, parser: Krikri::PrimoParser) do
     identifier record.field(*Krikri::PrimoParser.record('control', 'recordid'))
 
     language class: DPLA::MAP::Controlled::Language do
-      prefLabel record.field(*Krikri::PrimoParser.record('facets', 'language'))
+      providedLabel record.field(*Krikri::PrimoParser.record('facets', 'language'))
     end
 
     spatial class: DPLA::MAP::Place,
