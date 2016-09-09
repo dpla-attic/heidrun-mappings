@@ -172,6 +172,7 @@ Krikri::Mapper.define(:ia, parser: Krikri::XmlParser) do
               each: record.field('language'),
               as: :lang do
       providedLabel lang
+    end 
 
     # dcterms:spatial
     #   MARC.xml
