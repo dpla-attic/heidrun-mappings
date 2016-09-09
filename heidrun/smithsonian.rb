@@ -379,9 +379,10 @@ Krikri::Mapper.define(:smithsonian,
     #   <language> (not iso-6393 format)
     # TODO: This will need an enrichment to convert to iso-6393
     language :class => DPLA::MAP::Controlled::Language,
-             :each => record.field('indexedStructured', 'language').map(&clean_language)
+             :each => record.field('indexedStructured', 'language').map(&clean_language),
              :as => :lang do
       providedLabel lang
+    end 
     
     # dcterms:spatial
     #   <geoLocation><L5 type=[City | Town]></geoLocation >;
