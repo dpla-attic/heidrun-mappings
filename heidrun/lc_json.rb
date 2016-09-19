@@ -5,6 +5,10 @@ build_uri = lambda do |node|
   []
 end
 
+build_rights = lambda do |r| 
+  return "For rights relating to this resource, visit #{r.value}"
+end 
+
 Krikri::Mapper.define(:lc_json, :parser => Krikri::JsonParser) do
   provider class: DPLA::MAP::Agent do
     uri 'http://dp.la/api/contributor/lc'
@@ -52,15 +56,7 @@ Krikri::Mapper.define(:lc_json, :parser => Krikri::JsonParser) do
                 as:    :contributor do
       providedLabel contributor
     end
-
-    creator class: DPLA::MAP::Agent,
-            each:  record.field('item')
-              .if.field('creator')
-              .else { |item| item.field('creators').field_names },
-            as:    :creator do
-      providedLabel creator
-    end
-
+    
     date class: DPLA::MAP::TimeSpan,
          each:  record.field('item')
            .if.field('date')
@@ -69,7 +65,7 @@ Krikri::Mapper.define(:lc_json, :parser => Krikri::JsonParser) do
       providedLabel date
     end
 
-    description record.field('item', 'description')
+    description record.field('item').fields('description', 'created_published')
 
     extent record.field('item', 'medium')
 
@@ -89,22 +85,13 @@ Krikri::Mapper.define(:lc_json, :parser => Krikri::JsonParser) do
     end
 
     spatial class: DPLA::MAP::Place,
-            each:  record.field('locations'),
+            each:  record.field('item','location').field_names,
             as: :place do
-      providedLabel place.field('properties', 'name')
-      exactMatch place.field('properties', 'uris')
-                  .first_value.map(&build_uri)
-
-      long place.field('geometry', 'coordinates').first_value
-      lat  place.field('geometry', 'coordinates').last_value
+      providedLabel place
     end
 
-    publisher record.field('item', 'created_published')
-
-    relation record.field('item', 'related_items')
-
-    rights record.field('item', 'rights_advisory|rights')
-
+    rights record.field('item', 'url|id').map(&build_rights)
+    
     subject class: DPLA::MAP::Concept,
             each:  record.field('item', 'subject_headings'),
             as:    :subject do
