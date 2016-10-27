@@ -164,4 +164,11 @@ Krikri::Mapper.define(:tn_mods, :parser => Krikri::ModsParser) do
       end
     }.first
   end
+
+  intermediateProvider :class => DPLA::MAP::Agent, 
+                       :each => record.field('mods:note')
+                        .match_attribute(:displayLabel, 'Intermediate Provider'), 
+                       :as => :source do
+    providedLabel source
+  end
 end
